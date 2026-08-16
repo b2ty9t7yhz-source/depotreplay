@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "name": "Exact Solver Mini",
+  "seed": 424242,
+  "grid": {
+    "width": 7,
+    "height": 5,
+    "obstacles": [
+      {"x": 3, "y": 1},
+      {"x": 3, "y": 2},
+      {"x": 3, "y": 3}
+    ]
+  },
+  "vehicles": [
+    {"id": "V1", "start": {"x": 0, "y": 0}, "capacity": 3},
+    {"id": "V2", "start": {"x": 6, "y": 4}, "capacity": 3}
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "pickup": {"x": 1, "y": 0},
+      "delivery": {"x": 5, "y": 1},
+      "demand": 1,
+      "deadline": 10
+    },
+    {
+      "id": "T2",
+      "pickup": {"x": 5, "y": 4},
+      "delivery": {"x": 1, "y": 3},
+      "demand": 2,
+      "deadline": 12
+    },
+    {
+      "id": "T3",
+      "pickup": {"x": 2, "y": 4},
+      "delivery": {"x": 6, "y": 2},
+      "demand": 3,
+      "deadline": 17
+    }
+  ],
+  "scoreWeights": {"distance": 1, "lateness": 5, "unserved": 100},
+  "maxTicks": 40,
+  "pathAlgorithm": "DIJKSTRA"
+}

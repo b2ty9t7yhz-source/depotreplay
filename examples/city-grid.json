@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "name": "Harbor District Dispatch",
+  "seed": 20260813,
+  "grid": {
+    "width": 12,
+    "height": 9,
+    "obstacles": [
+      {"x": 4, "y": 1},
+      {"x": 4, "y": 2},
+      {"x": 4, "y": 3},
+      {"x": 4, "y": 5},
+      {"x": 4, "y": 6},
+      {"x": 4, "y": 7},
+      {"x": 8, "y": 1},
+      {"x": 8, "y": 2},
+      {"x": 8, "y": 3},
+      {"x": 8, "y": 4},
+      {"x": 8, "y": 6},
+      {"x": 8, "y": 7}
+    ]
+  },
+  "vehicles": [
+    {"id": "VAN-A", "start": {"x": 0, "y": 0}, "capacity": 4},
+    {"id": "VAN-B", "start": {"x": 11, "y": 8}, "capacity": 4}
+  ],
+  "tasks": [
+    {
+      "id": "MEDS",
+      "pickup": {"x": 1, "y": 2},
+      "delivery": {"x": 10, "y": 1},
+      "demand": 1,
+      "deadline": 22
+    },
+    {
+      "id": "BOOKS",
+      "pickup": {"x": 2, "y": 7},
+      "delivery": {"x": 9, "y": 7},
+      "demand": 2,
+      "deadline": 18
+    },
+    {
+      "id": "TOOLS",
+      "pickup": {"x": 6, "y": 0},
+      "delivery": {"x": 1, "y": 8},
+      "demand": 3,
+      "deadline": 30
+    },
+    {
+      "id": "FOOD",
+      "pickup": {"x": 10, "y": 5},
+      "delivery": {"x": 5, "y": 5},
+      "demand": 2,
+      "deadline": 14
+    },
+    {
+      "id": "PARTS",
+      "pickup": {"x": 6, "y": 8},
+      "delivery": {"x": 10, "y": 3},
+      "demand": 4,
+      "deadline": 25
+    }
+  ],
+  "scoreWeights": {"distance": 1, "lateness": 5, "unserved": 100},
+  "maxTicks": 60,
+  "pathAlgorithm": "ASTAR"
+}
