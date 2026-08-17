@@ -24,9 +24,9 @@ public final class Scorer {
         int unserved = (int) tasks.stream()
                 .filter(task -> task.status() != TaskStatus.DELIVERED)
                 .count();
-        long distanceCost = Math.multiplyFull(distance, weights.distance());
-        long latenessCost = Math.multiplyFull(lateness, weights.lateness());
-        long unservedCost = Math.multiplyFull(unserved, weights.unserved());
+        long distanceCost = multiplyAsLong(distance, weights.distance());
+        long latenessCost = multiplyAsLong(lateness, weights.lateness());
+        long unservedCost = multiplyAsLong(unserved, weights.unserved());
         return new ScoreBreakdown(
                 distance,
                 lateness,
@@ -36,5 +36,9 @@ public final class Scorer {
                 unservedCost,
                 Math.addExact(Math.addExact(distanceCost, latenessCost), unservedCost)
         );
+    }
+
+    private static long multiplyAsLong(int left, int right) {
+        return (long) left * right;
     }
 }

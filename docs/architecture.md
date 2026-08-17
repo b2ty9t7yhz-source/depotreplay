@@ -8,7 +8,9 @@ DepotReplay separates deterministic rules from presentation so every player run,
 
 ```mermaid
 flowchart TD
-    UI["desktop: libGDX rendering and keyboard input"] --> API["core: DispatchCommand and SimulationSnapshot"]
+    DESKTOP["desktop: LWJGL3, files, jpackage"] --> UI["game: shared libGDX rendering and input"]
+    WEB["web: TeaVM and static site"] --> UI
+    UI --> API["core: DispatchCommand and SimulationSnapshot"]
     CLI["core CLI"] --> ENGINE["SimulationEngine"]
     API --> ENGINE
     STRATEGY["Baseline strategies"] --> API
@@ -23,7 +25,7 @@ flowchart TD
     TESTS --> REPLAY
 ```
 
-`desktop` depends on `core`. `core` does not depend on libGDX, OpenGL, a windowing toolkit, wall-clock time, threads, or input devices.
+`desktop` and `web` depend on `game`, which depends on `core`. `core` does not depend on libGDX, OpenGL, a windowing toolkit, wall-clock time, threads, or input devices.
 
 ## Core components
 
@@ -63,6 +65,12 @@ The exact solver searches pickup/delivery event orders and vehicle assignments u
 
 `CanonicalJson` creates stable UTF-8 JSON bytes and SHA-256 hashes. `ReplayService` stores a hash for every tick and checks them during reconstruction. `SaveService` stores enough command history to reconstruct an in-progress engine and rejects a checkpoint whose reconstructed hash differs.
 
+### Platform adapters
+
+`game` owns the libGDX screen, keyboard-to-command translation, score dashboard, and shared controls. It receives persistence and frame-capture interfaces rather than accessing files directly. `desktop` implements those interfaces with Java file I/O and an LWJGL3 framebuffer. `web` supplies a browser launcher and explicitly disables desktop file operations while reusing the same scenario, engine, strategies, and renderer.
+
+The desktop distribution uses `jpackage` to bundle a reduced Java 21 runtime. The web distribution uses gdx-teavm to compile reachable Java bytecode to JavaScript and then overlays a responsive static HTML shell.
+
 ## Data flow for a comparison
 
 ```mermaid
@@ -96,3 +104,5 @@ sequenceDiagram
 - Tasks are available at tick 0; release times are not modeled.
 - The exact solver has a hard exponential-scale gate documented in the README and ADR 0003.
 - Baselines are deterministic reference policies, not production route optimizers.
+- Browser sandboxing leaves file-backed save/load and replay export in the desktop app.
+- Installers are host-specific and unsigned unless release maintainers provide signing identities.
