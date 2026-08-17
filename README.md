@@ -2,6 +2,8 @@
 
 **A deterministic dispatch strategy game with counterfactual evaluation.**
 
+**[Play DepotReplay in your browser](https://b2ty9t7yhz-source.github.io/depotreplay/)**
+
 DepotReplay is a Java 21/libGDX desktop and browser game with a headless simulation laboratory. A player dispatches two vehicles across a four-neighbor grid, picking up and delivering capacity-constrained tasks before their deadlines. The same scenario can be rerun with three transparent baselines or a bounded exact solver, so comparisons use identical rules rather than separate implementations.
 
 ![DepotReplay gameplay and comparison dashboard](docs/images/depotreplay-gameplay.png)
@@ -40,6 +42,8 @@ This compiles all modules with Java 21 and `-Xlint:all -Werror`, builds the brow
 Direct and transitive dependency versions are locked per module. Gradle verifies downloaded artifacts against checked-in SHA-256 metadata in strict mode, and the Wrapper distribution has its own pinned SHA-256 checksum.
 
 ## Play in a browser
+
+Public demo: [https://b2ty9t7yhz-source.github.io/depotreplay/](https://b2ty9t7yhz-source.github.io/depotreplay/)
 
 Build and serve the static site:
 
