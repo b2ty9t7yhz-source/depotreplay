@@ -2,6 +2,16 @@ name: Distributions
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/distributions.yml"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - "core/**"
+      - "game/**"
+      - "desktop/**"
+      - "web/**"
   push:
     tags:
       - "v*"
