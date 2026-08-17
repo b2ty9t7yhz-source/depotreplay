@@ -1,53 +1,40 @@
-package dev.depotreplay.desktop;
+package dev.depotreplay.game;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
-import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.ScreenUtils;
-import com.badlogic.gdx.utils.BufferUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
-import dev.depotreplay.core.compare.ComparisonReport;
-import dev.depotreplay.core.compare.ComparisonService;
-import dev.depotreplay.core.compare.RunComparison;
 import dev.depotreplay.core.engine.CommandRejectedException;
 import dev.depotreplay.core.engine.SimulationEngine;
-import dev.depotreplay.core.io.CanonicalJson;
-import dev.depotreplay.core.io.ScenarioIo;
 import dev.depotreplay.core.model.DispatchCommand;
 import dev.depotreplay.core.model.Position;
 import dev.depotreplay.core.model.Scenario;
+import dev.depotreplay.core.model.ScoreBreakdown;
 import dev.depotreplay.core.model.ServiceAction;
 import dev.depotreplay.core.model.SimulationSnapshot;
 import dev.depotreplay.core.model.TaskSnapshot;
 import dev.depotreplay.core.model.TaskStatus;
 import dev.depotreplay.core.model.VehicleSnapshot;
-import dev.depotreplay.core.replay.ReplayFile;
-import dev.depotreplay.core.replay.ReplayService;
-import dev.depotreplay.core.save.LoadedSave;
-import dev.depotreplay.core.save.SaveService;
 import dev.depotreplay.core.strategy.NearestTaskStrategy;
+import dev.depotreplay.core.strategy.Strategies;
 import dev.depotreplay.core.strategy.StrategyDecision;
 import dev.depotreplay.core.strategy.StrategyRunner;
 import dev.depotreplay.core.path.GridPathfinder;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-/** Thin libGDX adapter; all rules and persistence live in the headless core module. */
+/** Thin libGDX adapter; all simulation rules live in the headless core module. */
 public final class DepotReplayGame extends ApplicationAdapter {
     private static final float WORLD_WIDTH = 1280f;
     private static final float WORLD_HEIGHT = 800f;
@@ -62,15 +49,12 @@ public final class DepotReplayGame extends ApplicationAdapter {
     private static final Color SECONDARY = Color.valueOf("FFB454");
     private static final Color SUCCESS = Color.valueOf("75E6A4");
     private static final Color DANGER = Color.valueOf("FF6B81");
-    private static final Path SAVE_PATH = Path.of("build/player.save.json");
-    private static final Path REPLAY_PATH = Path.of("build/player.replay.json");
-
-    private final Path scenarioPath;
-    private final Path screenshotPath;
+    private final Scenario scenario;
+    private final GamePersistence persistence;
+    private final FrameCapture frameCapture;
     private final Viewport viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT);
-    private Scenario scenario;
     private SimulationEngine engine;
-    private ComparisonReport baselineReport;
+    private List<BaselineResult> baselineResults;
     private ShapeRenderer shapes;
     private SpriteBatch batch;
     private BitmapFont font;
@@ -78,20 +62,23 @@ public final class DepotReplayGame extends ApplicationAdapter {
     private int selectedVehicle;
     private int selectedTask;
     private String status = "Select a vehicle and task, then dispatch a pickup.";
-    private int renderedFrames;
-    private boolean screenshotWritten;
     private String modeLabel = "PLAYER DISPATCH";
 
-    public DepotReplayGame(Path scenarioPath, Path screenshotPath) {
-        this.scenarioPath = scenarioPath;
-        this.screenshotPath = screenshotPath;
+    public DepotReplayGame(Scenario scenario, GamePersistence persistence, FrameCapture frameCapture) {
+        this.scenario = scenario;
+        this.persistence = persistence;
+        this.frameCapture = frameCapture;
     }
 
     @Override
     public void create() {
-        scenario = ScenarioIo.load(scenarioPath);
         engine = new SimulationEngine(scenario);
-        baselineReport = new ComparisonService().compare(scenario, null);
+        baselineResults = Strategies.baselines().stream()
+                .map(strategy -> new BaselineResult(
+                        strategy.id(),
+                        new StrategyRunner().run(scenario, strategy).finalState().score()
+                ))
+                .toList();
         shapes = new ShapeRenderer();
         batch = new SpriteBatch();
         font = new BitmapFont();
@@ -99,7 +86,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
         smallFont = new BitmapFont();
         smallFont.getData().setScale(0.88f);
         Gdx.input.setInputProcessor(new Controls());
-        if (screenshotPath != null) {
+        if (frameCapture.requested()) {
             loadShowcaseRun();
         }
     }
@@ -117,7 +104,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
         drawTasks(state);
         drawVehicles(state);
         drawText(state);
-        writeScreenshotWhenReady();
+        frameCapture.afterFrame();
     }
 
     @Override
@@ -210,7 +197,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
             shapes.setColor(task.status() == TaskStatus.DELIVERED ? SUCCESS : DANGER);
             shapes.rect(centerX(task.delivery(), cell) - marker,
                     centerY(task.delivery(), cell) - marker, marker * 2, marker * 2);
-            if (index == selectedTask && screenshotPath == null) {
+            if (index == selectedTask && !frameCapture.requested()) {
                 shapes.setColor(Color.WHITE);
                 shapes.circle(centerX(task.pickup(), cell), centerY(task.pickup(), cell), marker * 0.35f, 18);
             }
@@ -226,7 +213,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
             float radius = Math.max(11f, cell * 0.24f);
             shapes.setColor(index == 0 ? PRIMARY : SECONDARY);
             shapes.circle(centerX(vehicle.position(), cell), centerY(vehicle.position(), cell), radius, 28);
-            if (index == selectedVehicle && screenshotPath == null) {
+            if (index == selectedVehicle && !frameCapture.requested()) {
                 shapes.setColor(Color.WHITE);
                 shapes.circle(centerX(vehicle.position(), cell), centerY(vehicle.position(), cell), radius * 0.34f, 20);
             }
@@ -256,7 +243,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
         font.setColor(Color.WHITE);
         font.draw(batch, "COUNTERFACTUAL BASELINES", 740, 430);
         float y = 392;
-        for (RunComparison run : baselineReport.runs()) {
+        for (BaselineResult run : baselineResults) {
             smallFont.setColor(Color.LIGHT_GRAY);
             smallFont.draw(batch, run.label(), 740, y);
             font.setColor(run.score().unservedTasks() == 0 ? SUCCESS : DANGER);
@@ -281,7 +268,8 @@ public final class DepotReplayGame extends ApplicationAdapter {
 
         smallFont.setColor(Color.valueOf("91A1BB"));
         smallFont.draw(batch, "1/2 vehicle  UP/DOWN task  P pickup  D deliver  SPACE tick", 54, 94);
-        smallFont.draw(batch, "A auto-step  R reset  S save  L load  E replay", 54, 70);
+        String platformControls = persistence.available() ? "  S save  L load  E replay" : "";
+        smallFont.draw(batch, "A auto-step  R reset" + platformControls, 54, 70);
         smallFont.setColor(status.startsWith("ERROR") ? DANGER : SUCCESS);
         smallFont.draw(batch, status, 54, 46);
         batch.end();
@@ -399,9 +387,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
 
     private void save() {
         try {
-            SaveService service = new SaveService();
-            service.save(SAVE_PATH, service.create(engine));
-            status = "Saved verified checkpoint to " + SAVE_PATH + ".";
+            applyPersistenceResult(persistence.save(scenario, engine));
         } catch (RuntimeException error) {
             status = "ERROR: " + error.getMessage();
         }
@@ -409,12 +395,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
 
     private void load() {
         try {
-            LoadedSave loaded = new SaveService().restore(new SaveService().load(SAVE_PATH));
-            if (!CanonicalJson.sha256(scenario).equals(CanonicalJson.sha256(loaded.engine().scenario()))) {
-                throw new IllegalArgumentException("Save belongs to a different scenario");
-            }
-            engine = loaded.engine();
-            status = "Loaded checkpoint at tick " + loaded.state().tick() + "; hash verified.";
+            applyPersistenceResult(persistence.load(scenario, engine));
         } catch (RuntimeException error) {
             status = "ERROR: " + error.getMessage();
         }
@@ -422,13 +403,15 @@ public final class DepotReplayGame extends ApplicationAdapter {
 
     private void exportReplay() {
         try {
-            ReplayService service = new ReplayService();
-            ReplayFile replay = service.create(scenario, engine.snapshot().commandLog());
-            service.save(REPLAY_PATH, replay);
-            status = "Exported and verified replay: " + replay.finalStateHash().substring(0, 12) + "...";
+            applyPersistenceResult(persistence.exportReplay(scenario, engine));
         } catch (RuntimeException error) {
             status = "ERROR: " + error.getMessage();
         }
+    }
+
+    private void applyPersistenceResult(PersistenceResult result) {
+        engine = result.engine();
+        status = result.message();
     }
 
     private void loadShowcaseRun() {
@@ -439,36 +422,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
         showcase.commandLog().forEach(engine::submitCommand);
         engine.runUntilTerminal();
         modeLabel = "VERIFIED STRATEGY REVIEW";
-        status = "Replay-ready result / " + CanonicalJson.sha256(engine.snapshot()).substring(0, 16) + "...";
-    }
-
-    private void writeScreenshotWhenReady() {
-        if (screenshotPath == null || screenshotWritten || renderedFrames++ < 3) {
-            return;
-        }
-        try {
-            Path absolute = screenshotPath.toAbsolutePath().normalize();
-            Path parent = absolute.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            int width = Gdx.graphics.getBackBufferWidth();
-            int height = Gdx.graphics.getBackBufferHeight();
-            byte[] pixels = ScreenUtils.getFrameBufferPixels(0, 0, width, height, true);
-            Pixmap pixmap = new Pixmap(width, height, Pixmap.Format.RGBA8888);
-            BufferUtils.copy(pixels, 0, pixmap.getPixels(), pixels.length);
-            try {
-                PixmapIO.writePNG(new FileHandle(absolute.toFile()), pixmap);
-            } finally {
-                pixmap.dispose();
-            }
-            screenshotWritten = true;
-            Gdx.app.log("DepotReplay", "Screenshot written to " + absolute);
-            Gdx.app.exit();
-        } catch (RuntimeException | java.io.IOException error) {
-            Gdx.app.error("DepotReplay", "Could not write screenshot", error);
-            Gdx.app.exit();
-        }
+        status = "Replay-ready deterministic result.";
     }
 
     private final class Controls extends InputAdapter {
@@ -493,4 +447,6 @@ public final class DepotReplayGame extends ApplicationAdapter {
             return true;
         }
     }
+
+    private record BaselineResult(String label, ScoreBreakdown score) { }
 }

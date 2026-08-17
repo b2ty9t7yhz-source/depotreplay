@@ -1,0 +1,11 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :game:dependencies --write-locks
+com.badlogicgames.gdx:gdx-jnigen-loader:2.5.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.badlogicgames.gdx:gdx:1.14.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.fasterxml.jackson.core:jackson-annotations:2.22=runtimeClasspath,testRuntimeClasspath
+com.fasterxml.jackson.core:jackson-core:2.22.1=runtimeClasspath,testRuntimeClasspath
+com.fasterxml.jackson.core:jackson-databind:2.22.1=runtimeClasspath,testRuntimeClasspath
+com.fasterxml.jackson:jackson-bom:2.22.1=runtimeClasspath,testRuntimeClasspath
+empty=annotationProcessor,testAnnotationProcessor

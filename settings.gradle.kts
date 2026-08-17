@@ -13,4 +13,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "depotreplay"
-include("core", "desktop")
+include("core", "game", "desktop", "web")

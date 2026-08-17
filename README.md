@@ -2,7 +2,7 @@
 
 **A deterministic dispatch strategy game with counterfactual evaluation.**
 
-DepotReplay is a Java 21/libGDX desktop game and headless simulation laboratory. A player dispatches two vehicles across a four-neighbor grid, picking up and delivering capacity-constrained tasks before their deadlines. The same scenario can be rerun with three transparent baselines or a bounded exact solver, so comparisons use identical rules rather than separate implementations.
+DepotReplay is a Java 21/libGDX desktop and browser game with a headless simulation laboratory. A player dispatches two vehicles across a four-neighbor grid, picking up and delivering capacity-constrained tasks before their deadlines. The same scenario can be rerun with three transparent baselines or a bounded exact solver, so comparisons use identical rules rather than separate implementations.
 
 ![DepotReplay gameplay and comparison dashboard](docs/images/depotreplay-gameplay.png)
 
@@ -21,27 +21,41 @@ The project does **not** claim real-world vehicle-routing performance. It is a d
 
 ## Requirements
 
-- JDK 21
-- macOS, Linux, or Windows with a desktop OpenGL environment for the game
+- JDK 21 to build from source
+- macOS, Linux, or Windows with a desktop OpenGL environment for the native game
+- a modern WebGL-capable browser for the static web build
 
-No system Gradle installation is required; the repository includes the Gradle Wrapper.
+No system Gradle installation is required; the repository includes the Gradle Wrapper. Native installers bundle a reduced Java 21 runtime, so players do not need to install Java.
 
 ## Build and test
 
 From the repository root:
 
 ```bash
-./gradlew clean check --no-daemon
+./gradlew clean check --no-configuration-cache --no-daemon
 ```
 
-This compiles both modules with Java 21 and `-Xlint:all -Werror`, then runs the headless JUnit 5 suite and generates the JaCoCo report at `core/build/reports/jacoco/test/html/index.html`.
+This compiles all modules with Java 21 and `-Xlint:all -Werror`, builds the browser site, runs the headless JUnit 5 suite, and generates the JaCoCo report at `core/build/reports/jacoco/test/html/index.html`.
 
 Direct and transitive dependency versions are locked per module. Gradle verifies downloaded artifacts against checked-in SHA-256 metadata in strict mode, and the Wrapper distribution has its own pinned SHA-256 checksum.
+
+## Play in a browser
+
+Build and serve the static site:
+
+```bash
+./gradlew :web:webDist --no-configuration-cache --no-daemon
+python3 -m http.server 8000 --directory web/build/site
+```
+
+Open `http://localhost:8000`, click the game once, and use the same dispatch controls listed below. The generated site has no server-side runtime and can be hosted on GitHub Pages or any static website host. File-backed save/load and replay export remain desktop-only.
+
+The manual `Deploy browser game to GitHub Pages` workflow publishes `web/build/site/` after GitHub Pages is configured to use GitHub Actions.
 
 ## Play the desktop game
 
 ```bash
-./gradlew :desktop:run --no-daemon
+./gradlew :desktop:run --no-configuration-cache --no-daemon
 ```
 
 Controls:
@@ -61,46 +75,58 @@ Controls:
 Run a different scenario:
 
 ```bash
-./gradlew :desktop:run --args='--scenario examples/exact-mini.json' --no-daemon
+./gradlew :desktop:run --args='--scenario examples/exact-mini.json' --no-configuration-cache --no-daemon
 ```
 
 Regenerate the checked-in screenshot from a real rendered frame:
 
 ```bash
-./gradlew :desktop:run --args='--scenario examples/city-grid.json --screenshot docs/images/depotreplay-gameplay.png' --no-daemon
+./gradlew :desktop:run --args='--scenario examples/city-grid.json --screenshot docs/images/depotreplay-gameplay.png' --no-configuration-cache --no-daemon
 ```
+
+## Build native installers
+
+Build the installer for the current operating system:
+
+```bash
+./gradlew :desktop:jpackageInstaller --no-configuration-cache --no-daemon
+```
+
+The output is a PKG on macOS, MSI on Windows, or DEB on Linux under `desktop/build/jpackage/installer/`, accompanied by `SHA256SUMS`. Each installer includes the Java runtime and built-in example scenario. `jpackage` does not cross-compile; the `Distributions` GitHub Actions workflow builds all three platforms on native runners.
+
+The project does not include signing identities, so generated installers are unsigned and may trigger an unknown-publisher warning. See [Distribution](docs/distribution.md) for platform requirements, hosting, and signing boundaries.
 
 ## Headless examples
 
 Validate an input and print its canonical scenario hash:
 
 ```bash
-./gradlew :core:run --args='validate examples/city-grid.json' --no-daemon
+./gradlew :core:run --args='validate examples/city-grid.json' --no-configuration-cache --no-daemon
 ```
 
 Run a baseline, persist a replay, and verify every state hash:
 
 ```bash
-./gradlew :core:run --args='run examples/city-grid.json nearest-task build/city.replay.json' --no-daemon
-./gradlew :core:run --args='verify build/city.replay.json' --no-daemon
+./gradlew :core:run --args='run examples/city-grid.json nearest-task build/city.replay.json' --no-configuration-cache --no-daemon
+./gradlew :core:run --args='verify build/city.replay.json' --no-configuration-cache --no-daemon
 ```
 
 Compare score components, vehicle routes, pickup ticks, and delivery ticks:
 
 ```bash
-./gradlew :core:run --args='compare examples/city-grid.json build/city.replay.json' --no-daemon
+./gradlew :core:run --args='compare examples/city-grid.json build/city.replay.json' --no-configuration-cache --no-daemon
 ```
 
 Solve the deliberately small exact example and write a verified replay:
 
 ```bash
-./gradlew :core:run --args='exact examples/exact-mini.json build/exact-mini.replay.json' --no-daemon
+./gradlew :core:run --args='exact examples/exact-mini.json build/exact-mini.replay.json' --no-configuration-cache --no-daemon
 ```
 
 Generate the same canonical scenario whenever the seed is the same:
 
 ```bash
-./gradlew :core:run --args='generate 12345 build/seeded-12345.json' --no-daemon
+./gradlew :core:run --args='generate 12345 build/seeded-12345.json' --no-configuration-cache --no-daemon
 ```
 
 All CLI commands return a nonzero status for invalid input or I/O errors. Replay corruption has a distinct exit status and a `CORRUPTED:` diagnostic.
@@ -162,39 +188,42 @@ See [Replay and save format](docs/replay-and-save.md) for the precise contracts.
 ## Architecture
 
 ```text
-desktop (libGDX input + rendering)
-              |
-              v
-core (engine, model, routing, strategies, exact solver, scoring, I/O)
-              |
-              v
-headless JUnit tests + CLI + canonical JSON artifacts
+desktop (LWJGL3 + files + jpackage) ----\
+                                        > game (shared libGDX UI) --> core
+web (TeaVM + static HTML/JavaScript) ---/                         engine/I/O
+                                                                       |
+                                                                       v
+                                                 headless tests + CLI + JSON
 ```
 
-The `core` module has no libGDX dependency and never reads wall-clock time, input devices, or rendering state. The desktop module translates keys into `DispatchCommand` values and renders immutable snapshots.
+The `core` module has no libGDX dependency and never reads wall-clock time, input devices, or rendering state. The shared `game` module translates keys into `DispatchCommand` values and renders immutable snapshots. Desktop and browser modules supply platform launchers and capabilities.
 
 More detail:
 
 - [Architecture](docs/architecture.md)
 - [Scenario format](docs/scenario-format.md)
 - [Test strategy](docs/test-strategy.md)
+- [Distribution](docs/distribution.md)
 - [ADR 0001: headless deterministic core](docs/adr/0001-headless-deterministic-core.md)
 - [ADR 0002: command-derived persistence](docs/adr/0002-command-derived-persistence.md)
 - [ADR 0003: bounded exhaustive solver](docs/adr/0003-bounded-exact-solver.md)
+- [ADR 0004: platform adapters and distribution](docs/adr/0004-platform-adapters-and-distribution.md)
 
 ## Repository layout
 
 ```text
 core/       Java simulation, CLI, persistence, strategies, and headless tests
-desktop/    libGDX desktop UI and screenshot capture
+game/       shared libGDX rendering and keyboard input
+desktop/    LWJGL3 launcher, file persistence, screenshot capture, and jpackage
+web/        TeaVM launcher and static browser shell
 examples/   validated synthetic scenarios
 docs/       architecture, ADRs, formats, test strategy, and screenshot
-.github/    continuous integration workflow
+.github/    CI, cross-platform distribution, and GitHub Pages workflows
 ```
 
 ## Continuous integration
 
-GitHub Actions uses Temurin Java 21 and the checked-in Gradle Wrapper. CI runs a clean `check`, uploads JUnit XML on failure, and uploads the JaCoCo HTML/XML reports after every run. Desktop code is compiled; UI behavior is kept thin while all game rules are covered headlessly.
+GitHub Actions uses Temurin Java 21 and the checked-in Gradle Wrapper. CI runs a clean `check`, uploads JUnit XML on failure, and uploads the JaCoCo HTML/XML reports after every run. The manual/tag distribution workflow builds PKG, MSI, DEB, and static web artifacts on native runners. The separate Pages workflow deploys only when manually requested.
 
 ## License
 
