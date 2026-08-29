@@ -1,5 +1,7 @@
 package dev.depotreplay.cli;
 
+import dev.depotreplay.core.benchmark.BenchmarkReport;
+import dev.depotreplay.core.io.CanonicalJson;
 import dev.depotreplay.core.io.ScenarioIo;
 import dev.depotreplay.core.model.DeliveryTaskDefinition;
 import dev.depotreplay.core.model.GridDefinition;
@@ -43,6 +45,23 @@ class DepotReplayCliTest {
         Captured captured = invoke("unknown");
         assertEquals(2, captured.status());
         assertTrue(captured.err().contains("Unknown command"));
+    }
+
+    @Test
+    void writesACanonicalMultiSeedBenchmarkReport() {
+        Path reportPath = temporaryDirectory.resolve("benchmark.json");
+        Captured captured = invoke("benchmark", "7", "3", reportPath.toString());
+
+        assertEquals(0, captured.status());
+        BenchmarkReport report = CanonicalJson.read(reportPath, BenchmarkReport.class);
+        assertEquals(7, report.firstSeed());
+        assertEquals(3, report.scenarioCount());
+        assertEquals(3, report.summaries().size());
+        assertTrue(captured.out().contains("reportHash=" + CanonicalJson.sha256(report)));
+
+        Captured verified = invoke("verify-benchmark", reportPath.toString());
+        assertEquals(0, verified.status());
+        assertTrue(verified.out().contains("VERIFIED BENCHMARK"));
     }
 
     private static Captured invoke(String... args) {

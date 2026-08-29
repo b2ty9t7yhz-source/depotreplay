@@ -14,11 +14,15 @@ flowchart TD
     CLI["core CLI"] --> ENGINE["SimulationEngine"]
     API --> ENGINE
     STRATEGY["Baseline strategies"] --> API
+    BENCHMARK["BenchmarkService"] --> STRATEGY
+    BENCHMARK --> CANON
     EXACT["Bounded exact solver"] --> ENGINE
     ENGINE --> PATH["GridPathfinder: Dijkstra and A*"]
     ENGINE --> SCORE["Scorer"]
     REPLAY["ReplayService and SaveService"] --> ENGINE
-    REPLAY --> CANON["CanonicalJson and SHA-256"]
+    REPLAY --> CANON["Portable canonical JSON and SHA-256"]
+    FILES["Jackson file codec"] --> REPLAY
+    BROWSER_CODEC["Strict browser replay codec"] --> REPLAY
     TESTS["Headless JUnit tests"] --> ENGINE
     TESTS --> STRATEGY
     TESTS --> EXACT
@@ -57,17 +61,21 @@ Service at the current cell still consumes one tick. The exact solver mirrors th
 
 Strategies inspect only `SimulationSnapshot`, `VehicleSnapshot`, and `GridPathfinder`. `StrategyRunner` converts a decision into a normal `DispatchCommand`. No strategy can mutate vehicle position, task state, score, or time directly.
 
+### Deterministic benchmarks
+
+`BenchmarkService` generates an ordered range of seeded scenarios and runs every built-in baseline through `StrategyRunner`. Reports use integer-only aggregates, preserve explicit scenario/strategy ordering, and include canonical scenario and final-state hashes. Verification regenerates the complete report instead of trusting its stored totals.
+
 ### Exact solver
 
 The exact solver searches pickup/delivery event orders and vehicle assignments using the same shortest-path distances, capacities, deadlines, service timing, and score weights as the engine. A memoized state includes both vehicles' positions, logical availability times, loads, cargo masks, and global pickup/delivery masks. The selected plan must replay through `SimulationEngine` to the same score before it is returned.
 
 ### Persistence
 
-`CanonicalJson` creates stable UTF-8 JSON bytes and SHA-256 hashes. `ReplayService` stores a hash for every tick and checks them during reconstruction. `SaveService` stores enough command history to reconstruct an in-progress engine and rejects a checkpoint whose reconstructed hash differs.
+`PortableReplayJson` creates stable UTF-8 JSON and SHA-256 hashes without reflection, so `ReplayService` can use the same bytes on the JVM and in TeaVM. Compatibility tests compare those bytes with the existing Jackson canonical format. `ReplayService` stores a hash for every tick and checks them during reconstruction. `SaveService` stores enough command history to reconstruct an in-progress engine and rejects a checkpoint whose reconstructed hash differs.
 
 ### Platform adapters
 
-`game` owns the libGDX screen, keyboard-to-command translation, score dashboard, and shared controls. It receives persistence and frame-capture interfaces rather than accessing files directly. `desktop` implements those interfaces with Java file I/O and an LWJGL3 framebuffer. `web` supplies a browser launcher and explicitly disables desktop file operations while reusing the same scenario, engine, strategies, and renderer.
+`game` owns the libGDX screen, keyboard-to-command translation, score dashboard, and shared controls. It receives persistence and frame-capture interfaces rather than accessing files directly. `desktop` implements those interfaces with Java file I/O and an LWJGL3 framebuffer. `web` strictly parses replay JSON without reflection, verifies it through `ReplayService`, stores replays in browser local storage, and downloads portable replay files while reusing the same scenario, engine, strategies, and renderer.
 
 The desktop distribution uses `jpackage` to bundle a reduced Java 21 runtime. The web distribution uses gdx-teavm to compile reachable Java bytecode to JavaScript and then overlays a responsive static HTML shell.
 
@@ -104,5 +112,6 @@ sequenceDiagram
 - Tasks are available at tick 0; release times are not modeled.
 - The exact solver has a hard exponential-scale gate documented in the README and ADR 0003.
 - Baselines are deterministic reference policies, not production route optimizers.
-- Browser sandboxing leaves file-backed save/load and replay export in the desktop app.
+- Browser storage is replay-oriented: it restarts verified review at tick 0 and is not a resumable checkpoint or a durable file backup.
+- Browser replay import is capped at 5 MB and supports single-tick stepping, not arbitrary seeking.
 - Installers are host-specific and unsigned unless release maintainers provide signing identities.

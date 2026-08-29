@@ -61,6 +61,8 @@ public final class DepotReplayGame extends ApplicationAdapter {
     private BitmapFont smallFont;
     private int selectedVehicle;
     private int selectedTask;
+    private int reviewedBaseline = -1;
+    private boolean reviewMode;
     private String status = "Select a vehicle and task, then dispatch a pickup.";
     private String modeLabel = "PLAYER DISPATCH";
 
@@ -74,9 +76,11 @@ public final class DepotReplayGame extends ApplicationAdapter {
     public void create() {
         engine = new SimulationEngine(scenario);
         baselineResults = Strategies.baselines().stream()
-                .map(strategy -> new BaselineResult(
-                        strategy.id(),
-                        new StrategyRunner().run(scenario, strategy).finalState().score()
+                .map(strategy -> new StrategyRunner().run(scenario, strategy))
+                .map(run -> new BaselineResult(
+                        run.strategyId(),
+                        run.finalState().score(),
+                        run.finalState()
                 ))
                 .toList();
         shapes = new ShapeRenderer();
@@ -243,9 +247,11 @@ public final class DepotReplayGame extends ApplicationAdapter {
         font.setColor(Color.WHITE);
         font.draw(batch, "COUNTERFACTUAL BASELINES", 740, 430);
         float y = 392;
-        for (BaselineResult run : baselineResults) {
-            smallFont.setColor(Color.LIGHT_GRAY);
-            smallFont.draw(batch, run.label(), 740, y);
+        for (int index = 0; index < baselineResults.size(); index++) {
+            BaselineResult run = baselineResults.get(index);
+            smallFont.setColor(reviewMode && reviewedBaseline == index ? PRIMARY : Color.LIGHT_GRAY);
+            String marker = reviewMode && reviewedBaseline == index ? "> " : "  ";
+            smallFont.draw(batch, marker + run.label(), 740, y);
             font.setColor(run.score().unservedTasks() == 0 ? SUCCESS : DANGER);
             font.draw(batch, String.valueOf(run.score().total()), 985, y + 2);
             smallFont.setColor(Color.valueOf("91A1BB"));
@@ -269,7 +275,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
         smallFont.setColor(Color.valueOf("91A1BB"));
         smallFont.draw(batch, "1/2 vehicle  UP/DOWN task  P pickup  D deliver  SPACE tick", 54, 94);
         String platformControls = persistence.available() ? "  S save  L load  E replay" : "";
-        smallFont.draw(batch, "A auto-step  R reset" + platformControls, 54, 70);
+        smallFont.draw(batch, "A auto  B baseline review  R reset" + platformControls, 54, 70);
         smallFont.setColor(status.startsWith("ERROR") ? DANGER : SUCCESS);
         smallFont.draw(batch, status, 54, 46);
         batch.end();
@@ -320,6 +326,10 @@ public final class DepotReplayGame extends ApplicationAdapter {
     }
 
     private void dispatch(ServiceAction action) {
+        if (reviewMode) {
+            status = "ERROR: Press R to return to player dispatch.";
+            return;
+        }
         if (engine.isTerminal()) {
             status = "ERROR: The run is terminal. Press R to reset.";
             return;
@@ -340,13 +350,28 @@ public final class DepotReplayGame extends ApplicationAdapter {
     private void advance() {
         try {
             engine.advanceOneTick();
-            status = "Advanced to deterministic tick " + engine.currentTick() + ".";
+            if (reviewMode && engine.isTerminal()) {
+                if (reviewedBaseline >= 0) {
+                    BaselineResult reviewed = baselineResults.get(reviewedBaseline);
+                    status = "Finished " + reviewed.label() + " with total cost "
+                            + engine.snapshot().score().total() + ".";
+                } else {
+                    status = "Verified replay finished with total cost "
+                            + engine.snapshot().score().total() + ".";
+                }
+            } else {
+                status = "Advanced to deterministic tick " + engine.currentTick() + ".";
+            }
         } catch (RuntimeException error) {
             status = "ERROR: " + error.getMessage();
         }
     }
 
     private void autoStep() {
+        if (reviewMode) {
+            status = "ERROR: Review commands are already queued. Use SPACE to step.";
+            return;
+        }
         if (engine.isTerminal()) {
             status = "ERROR: The run is terminal. Press R to reset.";
             return;
@@ -381,11 +406,30 @@ public final class DepotReplayGame extends ApplicationAdapter {
         engine = new SimulationEngine(scenario);
         selectedVehicle = 0;
         selectedTask = 0;
+        reviewedBaseline = -1;
+        reviewMode = false;
         modeLabel = "PLAYER DISPATCH";
         status = "Reset to canonical initial state.";
     }
 
+    private void reviewNextBaseline() {
+        reviewedBaseline = (reviewedBaseline + 1) % baselineResults.size();
+        BaselineResult reviewed = baselineResults.get(reviewedBaseline);
+        SimulationEngine reviewEngine = new SimulationEngine(scenario);
+        reviewed.finalState().commandLog().forEach(reviewEngine::submitCommand);
+        engine = reviewEngine;
+        reviewMode = true;
+        selectedVehicle = 0;
+        selectedTask = 0;
+        modeLabel = "COUNTERFACTUAL REVIEW / " + reviewed.label();
+        status = "Loaded " + reviewed.label() + "; use SPACE to step or B for the next baseline.";
+    }
+
     private void save() {
+        if (reviewMode) {
+            status = "ERROR: Press R before saving a player run.";
+            return;
+        }
         try {
             applyPersistenceResult(persistence.save(scenario, engine));
         } catch (RuntimeException error) {
@@ -394,6 +438,10 @@ public final class DepotReplayGame extends ApplicationAdapter {
     }
 
     private void load() {
+        if (reviewMode) {
+            status = "ERROR: Press R before loading a player run.";
+            return;
+        }
         try {
             applyPersistenceResult(persistence.load(scenario, engine));
         } catch (RuntimeException error) {
@@ -402,6 +450,10 @@ public final class DepotReplayGame extends ApplicationAdapter {
     }
 
     private void exportReplay() {
+        if (reviewMode) {
+            status = "ERROR: Press R before exporting a player replay.";
+            return;
+        }
         try {
             applyPersistenceResult(persistence.exportReplay(scenario, engine));
         } catch (RuntimeException error) {
@@ -412,6 +464,11 @@ public final class DepotReplayGame extends ApplicationAdapter {
     private void applyPersistenceResult(PersistenceResult result) {
         engine = result.engine();
         status = result.message();
+        reviewMode = result.reviewMode();
+        reviewedBaseline = -1;
+        modeLabel = result.modeLabel();
+        selectedVehicle = 0;
+        selectedTask = 0;
     }
 
     private void loadShowcaseRun() {
@@ -437,6 +494,7 @@ public final class DepotReplayGame extends ApplicationAdapter {
                 case Input.Keys.D -> dispatch(ServiceAction.DELIVER);
                 case Input.Keys.SPACE -> advance();
                 case Input.Keys.A -> autoStep();
+                case Input.Keys.B -> reviewNextBaseline();
                 case Input.Keys.R -> reset();
                 case Input.Keys.S -> save();
                 case Input.Keys.L -> load();
@@ -448,5 +506,9 @@ public final class DepotReplayGame extends ApplicationAdapter {
         }
     }
 
-    private record BaselineResult(String label, ScoreBreakdown score) { }
+    private record BaselineResult(
+            String label,
+            ScoreBreakdown score,
+            SimulationSnapshot finalState
+    ) { }
 }
