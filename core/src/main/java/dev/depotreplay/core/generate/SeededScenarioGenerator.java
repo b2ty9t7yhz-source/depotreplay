@@ -16,6 +16,8 @@ import java.util.SplittableRandom;
 
 /** Reproducible scenario generation driven only by an explicit seed. */
 public final class SeededScenarioGenerator {
+    public static final String GENERATOR_ID = "seeded-grid-v1";
+
     public Scenario generate(long seed) {
         GridDefinition grid = new GridDefinition(10, 8, List.of(
                 new Position(3, 1), new Position(3, 2), new Position(3, 3),

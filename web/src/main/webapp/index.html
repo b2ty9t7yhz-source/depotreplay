@@ -75,6 +75,46 @@
             font-size: 0.9rem;
         }
 
+        .replay-tools {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 14px;
+            padding: 14px 16px;
+            border: 1px solid #30415f;
+            border-radius: 10px;
+            background: #151e31;
+        }
+
+        .file-button {
+            flex: 0 0 auto;
+            padding: 9px 13px;
+            border: 1px solid #61dafb;
+            border-radius: 7px;
+            color: #0d1321;
+            background: #61dafb;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .file-button:focus-within {
+            outline: 2px solid #fff;
+            outline-offset: 2px;
+        }
+
+        .file-button input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+        }
+
+        #replay-status {
+            margin: 0;
+            color: #e8eef9;
+        }
+
         kbd {
             padding: 2px 6px;
             border: 1px solid #52637e;
@@ -90,6 +130,7 @@
             main { padding: 12px; }
             header { align-items: start; flex-direction: column; }
             .game-frame { border-radius: 8px; }
+            .replay-tools { align-items: flex-start; flex-direction: column; }
         }
     </style>
 </head>
@@ -108,14 +149,46 @@
     <p class="hint">
         Click the game, then use <kbd>1</kbd>/<kbd>2</kbd> for vehicles,
         <kbd>↑</kbd>/<kbd>↓</kbd> for tasks, <kbd>P</kbd>/<kbd>D</kbd> to dispatch,
-        <kbd>Space</kbd> to advance, and <kbd>A</kbd> for an automatic step.
+        <kbd>Space</kbd> to advance, <kbd>A</kbd> for an automatic step, and
+        <kbd>B</kbd> to review each baseline one tick at a time.
     </p>
+    <section class="replay-tools" aria-label="Verified replay tools">
+        <label class="file-button">
+            Choose replay file
+            <input id="replay-file" type="file" accept=".json,application/json">
+        </label>
+        <p id="replay-status" role="status" aria-live="polite">
+            Press <kbd>E</kbd> to download a verified replay, or choose one here and press <kbd>L</kbd> to verify it.
+        </p>
+    </section>
 </main>
 <script>
+    const IMPORTED_REPLAY_KEY = "depotreplay.replay.import";
+    const MAX_REPLAY_BYTES = 5 * 1024 * 1024;
+
     async function start() {
         main();
         document.getElementById("canvas").focus();
     }
+
+    document.getElementById("replay-file").addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        const status = document.getElementById("replay-status");
+        if (!file) return;
+        if (file.size > MAX_REPLAY_BYTES) {
+            status.textContent = "Replay rejected before parsing: files must be 5 MB or smaller.";
+            event.target.value = "";
+            return;
+        }
+        try {
+            localStorage.setItem(IMPORTED_REPLAY_KEY, await file.text());
+            status.textContent = "Selected " + file.name + ". Focus the game and press L to verify and load it.";
+            document.getElementById("canvas").focus();
+        } catch (error) {
+            status.textContent = "Could not read this replay: " + error.message;
+        }
+    });
+
     window.addEventListener("load", start);
 </script>
 <script src="depotreplay.js"></script>

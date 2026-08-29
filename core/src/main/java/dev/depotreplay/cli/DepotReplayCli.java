@@ -1,5 +1,8 @@
 package dev.depotreplay.cli;
 
+import dev.depotreplay.core.benchmark.BenchmarkReport;
+import dev.depotreplay.core.benchmark.BenchmarkService;
+import dev.depotreplay.core.benchmark.BenchmarkSummary;
 import dev.depotreplay.core.compare.ComparisonReport;
 import dev.depotreplay.core.compare.ComparisonService;
 import dev.depotreplay.core.compare.RunComparison;
@@ -47,6 +50,8 @@ public final class DepotReplayCli {
                 case "compare" -> compare(args, out);
                 case "exact" -> exact(args, out);
                 case "generate" -> generate(args, out);
+                case "benchmark" -> benchmark(args, out);
+                case "verify-benchmark" -> verifyBenchmark(args, out);
                 default -> throw new IllegalArgumentException("Unknown command: " + args[0]);
             };
         } catch (ValidationException error) {
@@ -149,6 +154,60 @@ public final class DepotReplayCli {
         return 0;
     }
 
+    private static int benchmark(String[] args, PrintStream out) {
+        requireCount(args, 4, "benchmark <first-seed> <scenario-count> <output.json>");
+        long firstSeed = parseLong(args[1], "first-seed");
+        int scenarioCount = parseInt(args[2], "scenario-count");
+        BenchmarkReport report = new BenchmarkService().run(firstSeed, scenarioCount);
+        Path output = Path.of(args[3]);
+        CanonicalJson.write(output, report);
+        String reportHash = CanonicalJson.sha256(report);
+        out.printf(
+                "BENCHMARK generator=%s firstSeed=%d scenarios=%d reportHash=%s%n",
+                report.generatorId(), report.firstSeed(), report.scenarioCount(), reportHash
+        );
+        report.summaries().forEach(summary -> printBenchmarkSummary(out, summary));
+        out.println("report=" + output.toAbsolutePath().normalize());
+        return 0;
+    }
+
+    private static int verifyBenchmark(String[] args, PrintStream out) {
+        requireCount(args, 2, "verify-benchmark <report.json>");
+        Path input = Path.of(args[1]);
+        BenchmarkReport report = CanonicalJson.read(input, BenchmarkReport.class);
+        String reportHash = new BenchmarkService().verify(report);
+        out.printf(
+                "VERIFIED BENCHMARK generator=%s firstSeed=%d scenarios=%d reportHash=%s%n",
+                report.generatorId(), report.firstSeed(), report.scenarioCount(), reportHash
+        );
+        return 0;
+    }
+
+    private static long parseLong(String value, String label) {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException(label + " must be a signed 64-bit integer", error);
+        }
+    }
+
+    private static int parseInt(String value, String label) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException(label + " must be a signed 32-bit integer", error);
+        }
+    }
+
+    private static void printBenchmarkSummary(PrintStream out, BenchmarkSummary summary) {
+        out.printf(
+                "SUMMARY %-24s best=%d/%d total=%d distance=%d lateness=%d unserved=%d%n",
+                summary.strategyId(), summary.bestScoreCount(), summary.scenarioCount(),
+                summary.totalScore(), summary.totalDistance(), summary.totalLateness(),
+                summary.totalUnservedTasks()
+        );
+    }
+
     private static void printRun(PrintStream out, RunComparison run) {
         out.printf(
                 "RUN %-24s total=%d distance=%d(cost=%d) lateness=%d(cost=%d) unserved=%d(cost=%d)%n",
@@ -184,5 +243,7 @@ public final class DepotReplayCli {
         out.println("  compare <scenario.json> [player.replay.json]");
         out.println("  exact <scenario.json> [output.replay.json]");
         out.println("  generate <seed> <output.scenario.json>");
+        out.println("  benchmark <first-seed> <scenario-count> <output.json>");
+        out.println("  verify-benchmark <report.json>");
     }
 }

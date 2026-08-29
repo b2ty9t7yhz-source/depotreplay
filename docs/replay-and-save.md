@@ -23,6 +23,12 @@ Verification reconstructs an engine, schedules the commands, hashes tick 0, adva
 
 The replay embeds its scenario to avoid resolving mutable external scenario files.
 
+### Browser boundary
+
+The TeaVM build uses a strict reflection-free decoder for this same schema. It rejects missing, unknown, null, wrongly typed, out-of-range, or unsupported enum fields before semantic verification. The browser then calls the same `ReplayService.verify` path used by the CLI and desktop modules. Only after all hashes pass does it construct a fresh engine with the verified commands queued for step-by-step review.
+
+Browser `S` stores an encoded replay in origin-local storage, `L` prefers a replay selected through the page and otherwise uses the stored replay, and `E` downloads the verified JSON. These operations do not upload data. Imports larger than 5 MB are rejected before parsing. Browser load begins at tick 0; it is intentionally not an in-progress checkpoint restore.
+
 ## Save
 
 A save file contains a validated scenario, its hash, `savedAtTick`, the applied command log, and the expected state hash. Loading replays the commands only to `savedAtTick`. The service returns a resumable engine only when the reconstructed canonical snapshot hash matches.

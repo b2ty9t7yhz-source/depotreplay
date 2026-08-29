@@ -30,15 +30,54 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Build and test
         run: ./gradlew clean check --no-configuration-cache --no-daemon
+
+      - name: Install Chromium browser test dependencies
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Test verified replay workflow in Chromium
+        working-directory: web
+        run: npm run test:e2e
+
+      - name: Generate and verify deterministic benchmark
+        run: |
+          ./gradlew :core:run --args='benchmark 0 25 build/reports/benchmark-seeds-0-24.json' --no-configuration-cache --no-daemon
+          ./gradlew :core:run --args='verify-benchmark build/reports/benchmark-seeds-0-24.json' --no-configuration-cache --no-daemon
+
+      - name: Upload deterministic benchmark
+        uses: actions/upload-artifact@v7
+        with:
+          name: deterministic-benchmark
+          path: build/reports/benchmark-seeds-0-24.json
+          if-no-files-found: error
 
       - name: Upload test results on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: junit-results
-          path: core/build/test-results/test/
+          path: |
+            core/build/test-results/test/
+            web/build/test-results/test/
+          if-no-files-found: ignore
+
+      - name: Upload browser trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report/
           if-no-files-found: ignore
 
       - name: Upload coverage report

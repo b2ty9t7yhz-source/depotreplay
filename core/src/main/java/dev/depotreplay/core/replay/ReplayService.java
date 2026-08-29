@@ -1,9 +1,10 @@
 package dev.depotreplay.core.replay;
 
 import dev.depotreplay.core.engine.SimulationEngine;
-import dev.depotreplay.core.io.CanonicalJson;
+import dev.depotreplay.core.engine.SimulationContract;
 import dev.depotreplay.core.io.CorruptedReplayException;
 import dev.depotreplay.core.io.DepotReplayException;
+import dev.depotreplay.core.io.CanonicalJson;
 import dev.depotreplay.core.model.DispatchCommand;
 import dev.depotreplay.core.model.Scenario;
 import dev.depotreplay.core.model.SimulationSnapshot;
@@ -15,7 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 
 public final class ReplayService {
-    public static final String ENGINE_VERSION = "0.1.0";
+    public static final String ENGINE_VERSION = SimulationContract.VERSION;
 
     public ReplayFile create(Scenario scenario, List<DispatchCommand> inputCommands) {
         ScenarioValidator.validate(scenario);
@@ -23,17 +24,17 @@ public final class ReplayService {
         SimulationEngine engine = new SimulationEngine(scenario);
         submitAll(engine, commands);
         List<TickHash> tickHashes = new ArrayList<>();
-        tickHashes.add(new TickHash(0, CanonicalJson.sha256(engine.snapshot())));
+        tickHashes.add(new TickHash(0, PortableReplayJson.stateHash(engine.snapshot())));
         while (!engine.isTerminal()) {
             SimulationSnapshot state = engine.advanceOneTick();
-            tickHashes.add(new TickHash(state.tick(), CanonicalJson.sha256(state)));
+            tickHashes.add(new TickHash(state.tick(), PortableReplayJson.stateHash(state)));
         }
         String finalStateHash = tickHashes.getLast().stateHash();
         return new ReplayFile(
                 1,
                 ENGINE_VERSION,
                 scenario,
-                CanonicalJson.sha256(scenario),
+                PortableReplayJson.scenarioHash(scenario),
                 commands,
                 tickHashes,
                 finalStateHash
@@ -42,7 +43,7 @@ public final class ReplayService {
 
     public ReplayVerification verify(ReplayFile replay) {
         validateEnvelope(replay);
-        String actualScenarioHash = CanonicalJson.sha256(replay.scenario());
+        String actualScenarioHash = PortableReplayJson.scenarioHash(replay.scenario());
         if (!actualScenarioHash.equals(replay.scenarioHash())) {
             throw new CorruptedReplayException(
                     "Scenario hash mismatch: expected " + replay.scenarioHash()
@@ -75,7 +76,7 @@ public final class ReplayService {
         if (hashIndex != replay.tickHashes().size()) {
             throw new CorruptedReplayException("Replay contains unexpected trailing tick hashes");
         }
-        String actualFinalHash = CanonicalJson.sha256(engine.snapshot());
+        String actualFinalHash = PortableReplayJson.stateHash(engine.snapshot());
         if (!actualFinalHash.equals(replay.finalStateHash())) {
             throw new CorruptedReplayException(
                     "Final state hash mismatch: expected " + replay.finalStateHash()
@@ -144,7 +145,7 @@ public final class ReplayService {
                             + expected.tick() + " but simulation reached " + state.tick()
             );
         }
-        String actualHash = CanonicalJson.sha256(state);
+        String actualHash = PortableReplayJson.stateHash(state);
         if (!actualHash.equals(expected.stateHash())) {
             throw new CorruptedReplayException(
                     "State hash mismatch at tick " + state.tick() + ": expected "

@@ -18,12 +18,23 @@ dependencyLocking {
 dependencies {
     implementation(project(":game"))
     compileOnly("org.jetbrains:annotations:26.0.2")
+
+    testImplementation(platform("org.junit:junit-bom:5.14.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release = 21
     options.compilerArgs.addAll(listOf("-proc:none", "-Xlint:all", "-Werror"))
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
 }
 
 gdxTeaVM {
